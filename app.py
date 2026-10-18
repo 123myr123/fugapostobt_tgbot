@@ -7,6 +7,7 @@ from logging.handlers import RotatingFileHandler
 #Копирование токена из json
 file = open("settings.json",'r',encoding="UTF-8")
 data = json.load(file)
+file.close()
 TOKEN = data["TOKEN"]
 
 # Настройка логирования
@@ -17,25 +18,41 @@ handler.setFormatter(formatter)
 #Настройка гугл таблиц
 gc = gspread.oauth()
 sh = gc.open("Батальоны и взводы")
-batalien = sh.worksheet("БАТАЛЬОН")
 
 async def start(update: Update, context):
-    if batalien.find(str(update.effective_user.id)) == None:
-        batalien.append_row([update.effective_user.id,update.effective_user.first_name])
-    await update.message.reply_text("Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n Если ты состоишь в какомто взводе то используй /platoon")
-async def platoon(update: Update, context):
-    keyboard =[
-        [  
-        InlineKeyboardButton("1Взвод",callback_data=1),
-        InlineKeyboardButton("2Взвод",callback_data=2),
-        InlineKeyboardButton("3Взвод",callback_data=3),
-        InlineKeyboardButton("4Взвод",callback_data=4),
-        InlineKeyboardButton("5Взвод",callback_data=5)
-        ]
-        
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text("Выбери взвод в ктором ты состоишь", reply_markup=reply_markup)
+    user_id = update.effective_user.id
+    group_id = data["grops"]["Батальон"]
+    member = await context.bot.get_chat_member(
+    chat_id=group_id,
+    user_id=int(user_id)
+    )
+    if member.status in ['creator', 'administrator', 'member']:
+        platoon = []
+        for grops_name in data["grops"]:
+            group_id = data["grops"][grops_name]
+            member = await context.bot.get_chat_member(
+                chat_id=group_id,
+                user_id=int(user_id)
+                )
+            worksheet = sh.worksheet(str(grops_name))
+            if member.status in ['creator', 'administrator', 'member']:
+                if worksheet.find(str(user_id)) == None:
+                    worksheet.append_row((str(user_id),update.effective_user.first_name))
+                platoon.append(grops_name)
+        await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n Если ты был записан в \n   {platoon}")
+    else:
+        await update.message.reply_text("ТЫ ДАЖЕ НЕ ГРАЖДАНИН")
+async def my_id(update: Update,context):
+    user_id = update.effective_user.id
+    user_name = update.effective_user.first_name
+    group = update.effective_chat.id
+    print("Chat ID:", update.effective_chat.id)
+    print("Chat type:", update.effective_chat.type)
+    print("Chat title:", update.effective_chat.title)
+    print("User ID:", user_id)
+    chat = await context.bot.get_chat(update.effective_chat.id)
+    print(chat.id, chat.type, chat.title)
+    await update.message.reply_text(f"Привет, {user_name}! Твой ID: {user_id}, ID групы:{group}")
 
 #кнопкпи
 async def buton(update: Update, context):
@@ -53,7 +70,7 @@ def main() -> None:
 
     # Команды
     application.add_handler(CommandHandler("start",start))
-    application.add_handler(CommandHandler("platoon",platoon))
+    application.add_handler(CommandHandler("my_id",my_id))
     #кнопки
     application.add_handler(CallbackQueryHandler(buton))
     print("Бот запущен. Нажмите Ctrl+C для остановки.")
