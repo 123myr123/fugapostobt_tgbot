@@ -46,12 +46,6 @@ async def my_id(update: Update,context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     group = update.effective_chat.id
-    print("Chat ID:", update.effective_chat.id)
-    print("Chat type:", update.effective_chat.type)
-    print("Chat title:", update.effective_chat.title)
-    print("User ID:", user_id)
-    chat = await context.bot.get_chat(update.effective_chat.id)
-    print(chat.id, chat.type, chat.title)
     await update.message.reply_text(f"Привет, {user_name}! Твой ID: {user_id}, ID групы:{group}")
 
 #кнопкпи
