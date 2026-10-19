@@ -21,7 +21,7 @@ handler.setFormatter(formatter)
 gc = gspread.oauth()
 sh = gc.open("Батальоны и взводы")
 batalion = sh.worksheet("Батальон")
-
+buton_number = 20
 async def start(update: Update, context):
     user_id = update.effective_user.id
     group_id = data["grops"]["Батальон"]
@@ -80,20 +80,29 @@ async def message(update: Update,context):
                     keyboard.append([(grops_name)])
                     i = i+1
         reply_markup = ReplyKeyboardMarkup(keyboard)
-        await update.message.reply_text(" текст получен выберите где будет призыв", reply_markup=reply_markup)
+        await update.message.reply_text("текст получен выберите где будет призыв", reply_markup=reply_markup)
         context.user_data["atack"] = 2
     if user_data == 3:
+        global buton_number
         text = context.user_data["text"] 
         del context.user_data["text"]
         i = 1
         worksheet = sh.worksheet(str(context.user_data["grops"]))
         del context.user_data["grops"]
         context.user_data.clear
+        context.bot_data["second_texts"] = []
+        context.bot_data["second_texts"].append(user_text)
+        keyboard =[
+             [InlineKeyboardButton("Подробности",callback_data=buton_number)]
+        ]
+        buton_number = buton_number + 1
+        reply_markup = InlineKeyboardMarkup(keyboard)
         id_messag =worksheet.cell(1,1).value
         while id_messag != None:
                     await context.bot.send_message(
                     chat_id=id_messag,
-                    text = text
+                    text = text,
+                    reply_markup = reply_markup
                 )
                     i = i+1
                     id_messag =worksheet.cell(i,1).value
@@ -102,8 +111,14 @@ async def message(update: Update,context):
         context.user_data["grops"] = user_text
         await update.message.reply_text("Вы выбрали взвод, напишите текст который будет высвечиватся после")
         context.user_data["atack"] = 3
-        
-        
+
+#Кнопки
+async def button(update: Update,context):
+    query = update.callback_query
+    variant = query.data
+    if int(variant) >= 20: 
+        new_text = int(variant) - 20
+        await query.edit_message_text(context.bot_data["second_texts"][new_text])
 
 
 
@@ -119,7 +134,7 @@ def main() -> None:
     #оброботка текста
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
     #кнопки
-
+    application.add_handler(CallbackQueryHandler(button))
     print("Бот запущен. Нажмите Ctrl+C для остановки.")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
