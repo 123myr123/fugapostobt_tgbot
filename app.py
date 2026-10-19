@@ -10,6 +10,8 @@ data = json.load(file)
 file.close()
 TOKEN = data["TOKEN"]
 
+
+
 # Настройка логирования
 logger = logging.getLogger()
 handler = RotatingFileHandler("app.log", maxBytes=1_024_1024, backupCount=1, encoding="utf-8")
@@ -18,6 +20,7 @@ handler.setFormatter(formatter)
 #Настройка гугл таблиц
 gc = gspread.oauth()
 sh = gc.open("Батальоны и взводы")
+batalion = sh.worksheet("Батальон")
 
 async def start(update: Update, context):
     user_id = update.effective_user.id
@@ -48,16 +51,62 @@ async def my_id(update: Update,context):
     group = update.effective_chat.id
     await update.message.reply_text(f"Привет, {user_name}! Твой ID: {user_id}, ID групы:{group}")
 
-#кнопкпи
-async def buton(update: Update, context):
-    query = update.callback_query
-    variant = query.data
-    if int(variant) <= 5:
-        worksheet = sh.worksheet(str(variant))
-        worksheet.append_row([update.effective_user.id,update.effective_user.first_name])
-        await query.edit_message_text(f"Ты добавлен в {variant} взвод")
-        return
+async def atack_time(update: Update,context):
+    user_id = update.effective_user.id
+    for grops_name in data["grops"]:
+        worksheet = sh.worksheet((str(grops_name)))
+        if worksheet.find(str(user_id),in_column=14) != None:
+            await update.message.reply_text("Прова найдены напишите текст для атаки")
+            context.user_data["atack"] = 1
+            return
+    await update.message.reply_text("лох")
+#Обработка текста
+async def message(update: Update,context):
+    user_id = update.effective_user.id
+    user_text = update.message.text
+    user_data= context.user_data["atack"]
+    del context.user_data["atack"]
+    context.user_data.clear
+    if user_data == 1:
+        context.user_data["text"] = user_text
+        await update.message.reply_text("Текст для обьявления получен")
+        context.user_data["atack"] = 2
+    if user_data == 2:
+        worksheet = sh.worksheet("Призыв")
+        worksheet.append_row((str(user_text),""))
+        nomer =worksheet.cell(1,5).value
+        new_nomer = int(nomer) + 1
+        worksheet.update_cell(1,5,new_nomer)
+        keyboard = []
+        i = 0
+        for grops_name in data["grops"]:
+                worksheet = sh.worksheet(str(grops_name))
+                if worksheet.find(str(user_id),in_column=14) != None:
+                    keyboard.append([(grops_name)])
+                    i = i+1
+        reply_markup = ReplyKeyboardMarkup(keyboard)
+        await update.message.reply_text("Оба текста получены выберите где будет призыв", reply_markup=reply_markup)
+        context.user_data["atack"] = 3
+    if user_data == 3:
+        text = context.user_data["text"] 
+        del context.user_data["text"]
+        context.user_data.clear
+        await update.message.reply_text("Вы выбрали батальён, начинаю призыв")
+        worksheet = sh.worksheet(str(user_text))
+        i=1
+        id_messag =worksheet.cell(i,1).value
+        while id_messag != None:
+            await context.bot.send_message(
+            chat_id=id_messag,
+            text = text
+        )
+            i = i+1
+            id_messag =worksheet.cell(i,1).value
+        await update.message.reply_text("Призыв окончен")
 
+
+
+#кнопкпи
 def main() -> None:
     """Запуск бота."""
     application = Application.builder().token(TOKEN).build()
@@ -65,8 +114,11 @@ def main() -> None:
     # Команды
     application.add_handler(CommandHandler("start",start))
     application.add_handler(CommandHandler("my_id",my_id))
+    application.add_handler(CommandHandler("atack_time",atack_time))
+    #оброботка текста
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
     #кнопки
-    application.add_handler(CallbackQueryHandler(buton))
+
     print("Бот запущен. Нажмите Ctrl+C для остановки.")
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
