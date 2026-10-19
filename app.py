@@ -63,20 +63,15 @@ async def atack_time(update: Update,context):
 #Обработка текста
 async def message(update: Update,context):
     user_id = update.effective_user.id
+    state = context.user_data.get("atack")
+    if state is None:
+        return
     user_text = update.message.text
     user_data= context.user_data["atack"]
     del context.user_data["atack"]
     context.user_data.clear
     if user_data == 1:
         context.user_data["text"] = user_text
-        await update.message.reply_text("Текст для обьявления получен")
-        context.user_data["atack"] = 2
-    if user_data == 2:
-        worksheet = sh.worksheet("Призыв")
-        worksheet.append_row((str(user_text),""))
-        nomer =worksheet.cell(1,5).value
-        new_nomer = int(nomer) + 1
-        worksheet.update_cell(1,5,new_nomer)
         keyboard = []
         i = 0
         for grops_name in data["grops"]:
@@ -85,24 +80,30 @@ async def message(update: Update,context):
                     keyboard.append([(grops_name)])
                     i = i+1
         reply_markup = ReplyKeyboardMarkup(keyboard)
-        await update.message.reply_text("Оба текста получены выберите где будет призыв", reply_markup=reply_markup)
-        context.user_data["atack"] = 3
+        await update.message.reply_text(" текст получен выберите где будет призыв", reply_markup=reply_markup)
+        context.user_data["atack"] = 2
     if user_data == 3:
         text = context.user_data["text"] 
         del context.user_data["text"]
+        i = 1
+        worksheet = sh.worksheet(str(context.user_data["grops"]))
+        del context.user_data["grops"]
         context.user_data.clear
-        await update.message.reply_text("Вы выбрали батальён, начинаю призыв")
-        worksheet = sh.worksheet(str(user_text))
-        i=1
-        id_messag =worksheet.cell(i,1).value
+        id_messag =worksheet.cell(1,1).value
         while id_messag != None:
-            await context.bot.send_message(
-            chat_id=id_messag,
-            text = text
-        )
-            i = i+1
-            id_messag =worksheet.cell(i,1).value
+                    await context.bot.send_message(
+                    chat_id=id_messag,
+                    text = text
+                )
+                    i = i+1
+                    id_messag =worksheet.cell(i,1).value
         await update.message.reply_text("Призыв окончен")
+    if user_data == 2:
+        context.user_data["grops"] = user_text
+        await update.message.reply_text("Вы выбрали взвод, напишите текст который будет высвечиватся после")
+        context.user_data["atack"] = 3
+        
+        
 
 
 
