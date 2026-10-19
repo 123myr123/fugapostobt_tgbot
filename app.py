@@ -116,6 +116,7 @@ async def message(update: Update,context):
 async def button(update: Update,context):
     query = update.callback_query
     variant = query.data
+    print(variant)
     if int(variant) >= 20: 
         new_text = int(variant) - 20
         await query.edit_message_text(context.bot_data["second_texts"][new_text])
