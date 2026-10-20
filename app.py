@@ -14,12 +14,17 @@ TOKEN = data["TOKEN"]
 
 # Настройка логирования
 logger = logging.getLogger()
-handler = RotatingFileHandler("app.log", maxBytes=1_024_1024, backupCount=1, encoding="utf-8")
+handler = RotatingFileHandler("app.log", maxBytes=1_024_1024, backupCount=2, encoding="utf-8")
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s",)
 handler.setFormatter(formatter)
 #Настройка гугл таблиц
 gc = gspread.oauth()
 sh = gc.open("Батальоны и взводы")
+post_ch = gc.open("42_pasta")
+worksheet_post = post_ch.worksheet("42")
+worksheet_42 = post_ch.worksheet("42")
+worksheet_stats = post_ch.worksheet("Лист2")
+worksheet_top = post_ch.worksheet("Рейтинг")
 batalion = sh.worksheet("Батальон")
 buton_number = 20
 async def start(update: Update, context):
@@ -50,7 +55,14 @@ async def my_id(update: Update,context):
     user_name = update.effective_user.first_name
     group = update.effective_chat.id
     await update.message.reply_text(f"Привет, {user_name}! Твой ID: {user_id}, ID групы:{group}")
-
+async def add_post(update: Update,context):
+    button_list = [
+        InlineKeyboardButton("Отменить отправку", callback_data="No"),
+    ]
+    reply_markup = InlineKeyboardMarkup(build_menu(button_list,n_cols=1))
+    context.user_data.clear
+    context.user_data["post_add"] = True
+    await update.message.reply_text("Для сохранения пасты скиньте её текст следующим сообщением.",reply_markup=reply_markup)
 async def atack_time(update: Update,context):
     user_id = update.effective_user.id
     for grops_name in data["grops"]:
@@ -60,12 +72,50 @@ async def atack_time(update: Update,context):
             context.user_data["atack"] = 1
             return
     await update.message.reply_text("лох")
+async def post(update:Update, context):
+    keyboard = [
+                [
+                InlineKeyboardButton("Следущюя", callback_data='+'),
+                ],
+                [
+                InlineKeyboardButton("1🌟", callback_data='1'),
+                InlineKeyboardButton("2🌟", callback_data='2'),
+                InlineKeyboardButton("3🌟", callback_data='3'),
+                InlineKeyboardButton("4🌟", callback_data='4'),
+                InlineKeyboardButton("5🌟", callback_data='5'),
+                ]
+            ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    post = worksheet_42.cell(1, 1).value
+    context.user_data["post"] = 1
+    await update.message.reply_text(f"{post}",reply_markup=reply_markup)
+async def top_post(update: Update,context):
+    values_list = worksheet_top.col_values(2)
+    values_list.sort(reverse=True)
+    top_past =  worksheet_top.find(values_list[0])
+    keyboard = [
+                [
+                InlineKeyboardButton("Следущюя", callback_data='++'),
+                ],
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    context.user_data["post"] = 0
+    await update.message.reply_text(f"{worksheet_top.cell(top_past.row,1).value}",reply_markup=reply_markup)
 #Обработка текста
 async def message(update: Update,context):
     user_id = update.effective_user.id
     state = context.user_data.get("atack")
     if state is None:
-        return
+        state = context.user_data.get("post_add")
+        if state is None:
+            return
+        if context.user_data["post_add"] == True:
+            del context.user_data["post_add"]
+            context.user_data.clear()
+            await message.reply_text("Паста добавлена")
+            values = [user_text,"",""]
+            worksheet_42.append_row(values)
+            return
     user_text = update.message.text
     user_data= context.user_data["atack"]
     del context.user_data["atack"]
@@ -111,12 +161,111 @@ async def message(update: Update,context):
         context.user_data["grops"] = user_text
         await update.message.reply_text("Вы выбрали взвод, напишите текст который будет высвечиватся после")
         context.user_data["atack"] = 3
+    state = context.user_data.get("post_add")
+    
 
 #Кнопки
 async def button(update: Update,context):
     query = update.callback_query
     variant = query.data
     print(variant)
+    if variant =="++":
+        post =context.user_data["post"]
+        del context.user_data["post"]
+        keyboard = [
+                    [
+                    InlineKeyboardButton("Прошлая", callback_data='--'),
+                    InlineKeyboardButton("Следющая", callback_data='++'),
+                    ]
+                ]
+        values_list = worksheet_top.col_values(2)
+        values_list.sort(reverse=True)
+        top_past =  worksheet_top.find(values_list[post + 1])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        context.user_data["post"] = post + 1
+        await query.edit_message_text(f"{worksheet_top.cell(top_past.row,1).value}",reply_markup=reply_markup)
+        return
+    if variant =="--":
+            post =context.user_data["post"]
+            del context.user_data["post"]
+            keyboard = [
+                        [
+                        InlineKeyboardButton("Прошлая", callback_data='--'),
+                        InlineKeyboardButton("Следющая", callback_data='++'),
+                        ]
+                    ]
+            values_list = worksheet_top.col_values(2)
+            values_list.sort(reverse=True)
+            top_past =  worksheet_top.find(values_list[post - 1])
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            context.user_data["post"] = post - 1
+            await query.edit_message_text(f"{worksheet_top.cell(top_past.row,1).value}",reply_markup=reply_markup)
+            return
+    
+    try:
+        if int(variant) <= 5:
+            post = context.user_data["post"]
+            del context.user_data["post"]
+            i = int(post)
+            context.user_data["post"] = i
+            post = worksheet_42.cell(i, 1).value
+            text =worksheet_stats.find(post)
+            user = worksheet_stats.find(str(update.effective_user.id))
+            worksheet_stats.update_cell(user.row,text.col,variant)
+            await context.bot.send_message(chat_id = update.effective_user.id, text="Ваша оценка добавлена/изменина")
+            keyboard = [
+                    [
+                    InlineKeyboardButton("Прошлая", callback_data='-'),
+                    InlineKeyboardButton("Следющая", callback_data='+'),
+                    ]
+                ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(f"{post}",reply_markup=reply_markup)
+            return
+    except:
+        post = 1
+    if variant == "No":
+        del context.user_data["post_add"]
+        context.user_data.clear()
+        await query.edit_message_text("Отправка отменина")
+        return
+    elif variant == "+" or variant == "-":
+        try:
+            post = context.user_data["post"]
+            if variant == "+":
+                del context.user_data["post"]
+                i = int(post) + 1
+                post = worksheet_42.cell(i, 1).value
+                context.user_data["post"] = i
+                if post == None:
+                  post = worksheet_42.cell(1, 1).value
+                  del context.user_data["post"]
+                  context.user_data["post"] = 1
+            else:
+                del context.user_data["post"]
+                i = int(post) - 1
+                post = worksheet_42.cell(i, 1).value
+                context.user_data["post"] = i
+                if post == None:
+                    del context.user_data["post"]
+                    context.user_data["post"] = 1
+        except:
+            post = "Ошибка на стороне сервера попробуйте познее"
+        keyboard = [
+            [
+            InlineKeyboardButton("Прошлая", callback_data='-'),
+            InlineKeyboardButton("Следющая", callback_data='+'),
+            ],
+            [
+            InlineKeyboardButton("1🌟", callback_data='1'),
+            InlineKeyboardButton("2🌟", callback_data='2'),
+            InlineKeyboardButton("3🌟", callback_data='3'),
+            InlineKeyboardButton("4🌟", callback_data='4'),
+            InlineKeyboardButton("5🌟", callback_data='5'),
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(f"{post}",reply_markup=reply_markup)
     if int(variant) >= 20: 
         new_text = int(variant) - 20
         await query.edit_message_text(context.bot_data["second_texts"][new_text])
@@ -132,6 +281,9 @@ def main() -> None:
     application.add_handler(CommandHandler("start",start))
     application.add_handler(CommandHandler("my_id",my_id))
     application.add_handler(CommandHandler("atack_time",atack_time))
+    application.add_handler(CommandHandler("post",post))
+    application.add_handler(CommandHandler("add_post",add_post))
+    application.add_handler(CommandHandler("top_post",top_post))
     #оброботка текста
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
     #кнопки
