@@ -269,14 +269,18 @@ async def button(update: Update,context):
     if int(variant) >= 20: 
         new_text = int(variant) - 20
         await query.edit_message_text(context.bot_data["second_texts"][new_text])
-
+# Очистака памяти каждые 24 часа
+async def clear_data_bot(context):
+    context.bot_data.clear
 
 
 #кнопкпи
 def main() -> None:
     """Запуск бота."""
     application = Application.builder().token(TOKEN).build()
-
+    #очистка памяти
+    job_queue = application.job_queue
+    job_queue.run_repeating(clear_data_bot, interval=86400, first=10)
     # Команды
     application.add_handler(CommandHandler("start",start))
     application.add_handler(CommandHandler("my_id",my_id))
