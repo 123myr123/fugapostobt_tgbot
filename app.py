@@ -280,7 +280,7 @@ def main() -> None:
     application = Application.builder().token(TOKEN).build()
     #очистка памяти
     job_queue = application.job_queue
-    job_queue.run_repeating(clear_data_bot, interval=86400, first=10)
+    job_queue.run_repeating(clear_data_bot, interval=172800, first=10)
     # Команды
     application.add_handler(CommandHandler("start",start))
     application.add_handler(CommandHandler("my_id",my_id))
