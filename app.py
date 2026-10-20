@@ -271,7 +271,7 @@ async def button(update: Update,context):
         await query.edit_message_text(context.bot_data["second_texts"][new_text])
 # Очистака памяти каждые 24 часа
 async def clear_data_bot(context):
-    context.bot_data.clear
+    context.bot_data.clear()
 
 
 #кнопкпи
