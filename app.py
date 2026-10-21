@@ -34,6 +34,8 @@ async def start(update: Update, context):
     chat_id=group_id,
     user_id=int(user_id)
     )
+    if worksheet_stats.find(str(user_id)) == None:
+            worksheet_stats.append_row([user_id,"",""])
     if member.status in ['creator', 'administrator', 'member']:
         platoon = []
         for grops_name in data["grops"]:
