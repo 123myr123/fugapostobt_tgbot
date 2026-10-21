@@ -49,9 +49,17 @@ async def start(update: Update, context):
                 if worksheet.find(str(user_id)) == None:
                     worksheet.append_row((str(user_id),update.effective_user.first_name))
                 platoon.append(grops_name)
-        await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n Если ты был записан в \n   {platoon}")
+        await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n  Ты был записан в \n   {platoon}")
     else:
         await update.message.reply_text("ТЫ ДАЖЕ НЕ ГРАЖДАНИН")
+async def help(update,context): 
+        message = update.message
+        await message.reply_text(
+        "Привет, тут я постораюсь ответить на самые частые вопросы.\n"
+        "Код проекта:https://github.com/123myr123/fugapostobt_tgbot/tree/main\n"
+        "Список паст из /post обьединеный в гугл таблицу: https://docs.google.com/spreadsheets/d/e/2PACX-1vRAAd_FUx7BD9kQN37XBJIf6YlNmexV4CL0D5S8GDEwhyM7JBV0FUd8DC_feihOvzL1lPd4xGikJvpt/pubhtml"
+        "Каналл с новостями по боту: https://t.me/fugapostnews"
+        )
 async def my_id(update: Update,context):
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
@@ -175,7 +183,6 @@ async def message(update: Update,context):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     variant = query.data
-    print(variant)
     await query.answer()
 
     # Кнопки подробностей новых призывов используют уникальный ID.
@@ -292,7 +299,6 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await query.edit_message_text(
                 "Подробности этого старого призыва недоступны. "
-                "Для новых призывов кнопка будет работать."
             )
         return
 # Очистака памяти каждые 24 часа
