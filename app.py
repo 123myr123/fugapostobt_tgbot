@@ -1,4 +1,5 @@
 import json
+import uuid
 import gspread
 import logging
 from telegram import Update,InlineKeyboardButton,InlineKeyboardMarkup,ReplyKeyboardMarkup
@@ -26,7 +27,6 @@ worksheet_42 = post_ch.worksheet("42")
 worksheet_stats = post_ch.worksheet("Лист2")
 worksheet_top = post_ch.worksheet("Рейтинг")
 batalion = sh.worksheet("Батальон")
-buton_number = 20
 async def start(update: Update, context):
     user_id = update.effective_user.id
     group_id = data["grops"]["Батальон"]
@@ -133,19 +133,24 @@ async def message(update: Update,context):
         await update.message.reply_text("текст получен выберите где будет призыв", reply_markup=reply_markup)
         context.user_data["atack"] = 2
     if user_data == 3:
-        global buton_number
-        text = context.user_data["text"] 
+        text = context.user_data["text"]
         del context.user_data["text"]
         i = 1
         worksheet = sh.worksheet(str(context.user_data["grops"]))
         del context.user_data["grops"]
         context.user_data.clear
-        context.bot_data["second_texts"] = []
-        context.bot_data["second_texts"].append(user_text)
-        keyboard =[
-             [InlineKeyboardButton("Подробности",callback_data=buton_number)]
+
+        # Сохраняем подробности отдельно для каждого призыва.
+        details_id = uuid.uuid4().hex[:12]
+        context.bot_data.setdefault("second_texts", {})
+        context.bot_data["second_texts"][details_id] = user_text
+
+        keyboard = [
+            [InlineKeyboardButton(
+                "Подробности",
+                callback_data=f"detail:{details_id}"
+            )]
         ]
-        buton_number = buton_number + 1
         reply_markup = InlineKeyboardMarkup(keyboard)
         id_messag =worksheet.cell(1,1).value
         while id_messag != None:
@@ -165,10 +170,20 @@ async def message(update: Update,context):
     
 
 #Кнопки
-async def button(update: Update,context):
+async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     variant = query.data
     print(variant)
+    await query.answer()
+
+    # Кнопки подробностей новых призывов используют уникальный ID.
+    if variant.startswith("detail:"):
+        details_id = variant.split(":", 1)[1]
+        details = context.bot_data.get("second_texts", {}).get(details_id)
+        await query.edit_message_text(
+            details or "Подробности этого призыва больше недоступны."
+        )
+        return
     if variant =="++":
         post =context.user_data["post"]
         del context.user_data["post"]
@@ -266,9 +281,18 @@ async def button(update: Update,context):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(f"{post}",reply_markup=reply_markup)
-    if int(variant) >= 20: 
+    # Совместимость со старыми сообщениями, отправленными до обновления.
+    if variant.isdigit() and int(variant) >= 20:
         new_text = int(variant) - 20
-        await query.edit_message_text(context.bot_data["second_texts"][new_text])
+        old_texts = context.bot_data.get("second_texts", [])
+        if isinstance(old_texts, list) and 0 <= new_text < len(old_texts):
+            await query.edit_message_text(old_texts[new_text])
+        else:
+            await query.edit_message_text(
+                "Подробности этого старого призыва недоступны. "
+                "Для новых призывов кнопка будет работать."
+            )
+        return
 # Очистака памяти каждые 24 часа
 async def clear_data_bot(context):
     context.bot_data.clear()
