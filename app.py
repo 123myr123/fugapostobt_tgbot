@@ -10,16 +10,13 @@ file = open("settings.json",'r',encoding="UTF-8")
 data = json.load(file)
 file.close()
 TOKEN = data["TOKEN"]
-
-
-
 # Настройка логирования
 logger = logging.getLogger()
 handler = RotatingFileHandler("app.log", maxBytes=1_024_1024, backupCount=2, encoding="utf-8")
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s",)
 handler.setFormatter(formatter)
 #Настройка гугл таблиц
-gc = gspread.oauth()
+gc = gspread.service_account()
 sh = gc.open("Батальоны и взводы")
 post_ch = gc.open("42_pasta")
 worksheet_post = post_ch.worksheet("42")
@@ -27,18 +24,14 @@ worksheet_42 = post_ch.worksheet("42")
 worksheet_stats = post_ch.worksheet("Лист2")
 worksheet_top = post_ch.worksheet("Рейтинг")
 batalion = sh.worksheet("Батальон")
+
+#Команды
 async def start(update: Update, context):
     user_id = update.effective_user.id
-    group_id = data["grops"]["Батальон"]
-    member = await context.bot.get_chat_member(
-    chat_id=group_id,
-    user_id=int(user_id)
-    )
     if worksheet_stats.find(str(user_id)) == None:
             worksheet_stats.append_row([user_id,"",""])
-    if member.status in ['creator', 'administrator', 'member']:
-        platoon = []
-        for grops_name in data["grops"]:
+    platoon = []
+    for grops_name in data["grops"]:
             group_id = data["grops"][grops_name]
             member = await context.bot.get_chat_member(
                 chat_id=group_id,
@@ -49,16 +42,14 @@ async def start(update: Update, context):
                 if worksheet.find(str(user_id)) == None:
                     worksheet.append_row((str(user_id),update.effective_user.first_name))
                 platoon.append(grops_name)
-        await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n  Ты был записан в \n   {platoon}")
-    else:
-        await update.message.reply_text("ТЫ ДАЖЕ НЕ ГРАЖДАНИН")
+    await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n  Ты был записан в \n   {platoon}")
 async def help(update,context): 
         message = update.message
         await message.reply_text(
         "Привет, тут я постораюсь ответить на самые частые вопросы.\n"
         "Код проекта:https://github.com/123myr123/fugapostobt_tgbot/tree/main\n"
         "Список паст из /post обьединеный в гугл таблицу: https://docs.google.com/spreadsheets/d/e/2PACX-1vRAAd_FUx7BD9kQN37XBJIf6YlNmexV4CL0D5S8GDEwhyM7JBV0FUd8DC_feihOvzL1lPd4xGikJvpt/pubhtml"
-        "Каналл с новостями по боту: https://t.me/fugapostnews"
+        "\nКаналл с новостями по боту: https://t.me/fugapostnews"
         )
 async def my_id(update: Update,context):
     user_id = update.effective_user.id
@@ -164,12 +155,15 @@ async def message(update: Update,context):
         reply_markup = InlineKeyboardMarkup(keyboard)
         id_messag =worksheet.cell(1,1).value
         while id_messag != None:
-                    await context.bot.send_message(
+                    try:
+                        await context.bot.send_message(
                     chat_id=id_messag,
                     text = text,
                     reply_markup = reply_markup
                 )
-                    i = i+1
+                        i = i+1
+                    except:
+                        i = i+1
                     id_messag =worksheet.cell(i,1).value
         await update.message.reply_text("Призыв окончен")
     if user_data == 2:
@@ -320,6 +314,7 @@ def main() -> None:
     application.add_handler(CommandHandler("post",post))
     application.add_handler(CommandHandler("add_post",add_post))
     application.add_handler(CommandHandler("top_post",top_post))
+    application.add_handler(CommandHandler("help",help))
     #оброботка текста
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
     #кнопки
