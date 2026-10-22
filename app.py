@@ -3,6 +3,7 @@ import uuid
 import gspread
 import logging
 from telegram import Update,InlineKeyboardButton,InlineKeyboardMarkup,ReplyKeyboardMarkup
+from telegram.error import BadRequest, TelegramError
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes,CallbackQueryHandler
 from logging.handlers import RotatingFileHandler
 #Копирование токена из json
@@ -33,14 +34,33 @@ async def start(update: Update, context):
     platoon = []
     for grops_name in data["grops"]:
             group_id = data["grops"][grops_name]
-            member = await context.bot.get_chat_member(
-                chat_id=group_id,
-                user_id=int(user_id)
-                )
             worksheet = sh.worksheet(str(grops_name))
+
+            # В некоторых группах Telegram может вернуть BadRequest
+            # (например, "Member not found"), если пользователь не найден
+            # или бот не может проверить его членство. Пропускаем такой чат,
+            # чтобы /start продолжал работать с остальными взводами.
+            try:
+                member = await context.bot.get_chat_member(
+                    chat_id=group_id,
+                    user_id=int(user_id)
+                )
+            except BadRequest as exc:
+                logger.warning(
+                    "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                    user_id, grops_name, group_id, exc
+                )
+                continue
+            except TelegramError:
+                logger.exception(
+                    "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                    user_id, grops_name
+                )
+                continue
+
             if member.status in ['creator', 'administrator', 'member']:
-                if worksheet.find(str(user_id)) == None:
-                    worksheet.append_row((str(user_id),update.effective_user.first_name))
+                if worksheet.find(str(user_id)) is None:
+                    worksheet.append_row((str(user_id), update.effective_user.first_name))
                 platoon.append(grops_name)
     await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n  Ты был записан в \n   {platoon}")
 async def help(update,context): 
