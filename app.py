@@ -144,7 +144,10 @@ async def message(update: Update,context):
         # Сохраняем подробности отдельно для каждого призыва.
         details_id = uuid.uuid4().hex[:12]
         context.bot_data.setdefault("second_texts", {})
-        context.bot_data["second_texts"][details_id] = user_text
+        context.bot_data["second_texts"][details_id] = {
+            "text": user_text,
+            "worksheet": worksheet.title,
+        }
 
         keyboard = [
             [InlineKeyboardButton(
@@ -183,9 +186,40 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if variant.startswith("detail:"):
         details_id = variant.split(":", 1)[1]
         details = context.bot_data.get("second_texts", {}).get(details_id)
-        await query.edit_message_text(
-            details or "Подробности этого призыва больше недоступны."
-        )
+
+        if not details:
+            await query.edit_message_text(
+                "Подробности этого призыва больше недоступны."
+            )
+            return
+
+        # Учитываем нажатие в листе именно того взвода,
+        # для которого был отправлен этот призыв.
+        user_id = str(query.from_user.id)
+        platoon_sheet = sh.worksheet(details["worksheet"])
+        member_cell = platoon_sheet.find(user_id, in_column=1)
+
+        if member_cell is None:
+            await query.answer(
+                "Не удалось найти вас в таблице этого взвода.",
+                show_alert=True
+            )
+            return
+
+        # Увеличиваем значение в третьем столбце строки пользователя на 1.
+        count_cell = platoon_sheet.cell(member_cell.row, 3).value
+        try:
+            count = int(count_cell) if count_cell not in (None, "") else 0
+        except (TypeError, ValueError):
+            await query.answer(
+                "В третьем столбце указано не число.",
+                show_alert=True
+            )
+            return
+
+        platoon_sheet.update_cell(member_cell.row, 3, count + 1)
+
+        await query.edit_message_text(details["text"])
         return
     if variant =="++":
         post =context.user_data["post"]
