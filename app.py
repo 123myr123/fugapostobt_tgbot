@@ -62,7 +62,7 @@ async def start(update: Update, context):
                 if worksheet.find(str(user_id)) is None:
                     worksheet.append_row((str(user_id), update.effective_user.first_name))
                 platoon.append(grops_name)
-    await update.message.reply_text(f"Привет, ты был записан в первый батальён, \nТы можешь посмотерть пасты на /post или используй /help \n  Ты был записан в \n   {platoon}")
+    await update.message.reply_text(f"Привет \nТы можешь посмотерть пасты на /post или используй /help \n  Ты был записан в \n{platoon}")
 async def help(update,context): 
         message = update.message
         await message.reply_text(
