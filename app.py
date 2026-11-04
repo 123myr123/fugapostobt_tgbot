@@ -16,6 +16,7 @@ logger = logging.getLogger()
 handler = RotatingFileHandler("app.log", maxBytes=1_024_1024, backupCount=2, encoding="utf-8")
 formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s",)
 handler.setFormatter(formatter)
+logger.addHandler(handler)
 #Настройка гугл таблиц
 gc = gspread.service_account()
 sh = gc.open("Батальоны и взводы")
@@ -87,11 +88,28 @@ async def add_post(update: Update,context):
 async def atack_time(update: Update,context):
     user_id = update.effective_user.id
     for grops_name in data["grops"]:
-        worksheet = sh.worksheet((str(grops_name)))
-        if worksheet.find(str(user_id),in_column=14) != None:
-            await update.message.reply_text("Прова найдены напишите текст для атаки")
-            context.user_data["atack"] = 1
-            return
+            group_id = data["grops"][grops_name]
+            try:
+                member = await context.bot.get_chat_member(
+                    chat_id=group_id,
+                    user_id=int(user_id)
+                )
+            except BadRequest as exc:
+                logger.warning(
+                    "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                    user_id, grops_name, group_id, exc
+                )
+                continue
+            except TelegramError:
+                logger.exception(
+                    "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                    user_id, grops_name
+                )
+                continue
+            if member.status in ['creator', 'administrator']:
+                await update.message.reply_text("Прова найдены напишите текст для атаки")
+                context.user_data["atack"] = 1
+                return
     await update.message.reply_text("лох")
 async def post(update:Update, context):
     keyboard = [
@@ -122,6 +140,28 @@ async def top_post(update: Update,context):
     reply_markup = InlineKeyboardMarkup(keyboard)
     context.user_data["post"] = 0
     await update.message.reply_text(f"{worksheet_top.cell(top_past.row,1).value}",reply_markup=reply_markup)
+
+async def check(update: Update,context):
+    message = update.effective_message
+
+    if not message:
+        return
+
+    target_user = None
+    platoon = []
+
+    # 1. Пользователь ответил на чьё-то сообщение
+    if message.reply_to_message:
+        target_user = message.reply_to_message.from_user
+        for grops_name in data["grops"]:
+            worksheet = sh.worksheet(str(grops_name))
+            if worksheet.find(str(target_user.id)) != None:
+                platoon.append(grops_name)
+        if platoon == []:
+            await message.reply_text("Пользователь нигде не найден, скорее всего он не запускал бота")
+        else:
+            await message.reply_text(f"Пользователь найден в {platoon}")
+    
 #Обработка текста
 async def message(update: Update,context):
     user_id = update.effective_user.id
@@ -146,10 +186,26 @@ async def message(update: Update,context):
         keyboard = []
         i = 0
         for grops_name in data["grops"]:
-                worksheet = sh.worksheet(str(grops_name))
-                if worksheet.find(str(user_id),in_column=14) != None:
-                    keyboard.append([(grops_name)])
-                    i = i+1
+            group_id = data["grops"][grops_name]
+            try:
+                member = await context.bot.get_chat_member(
+                    chat_id=group_id,
+                    user_id=int(user_id)
+                )
+            except BadRequest as exc:
+                logger.warning(
+                    "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                    user_id, grops_name, group_id, exc
+                )
+                continue
+            except TelegramError:
+                logger.exception(
+                    "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                    user_id, grops_name
+                )
+                continue
+            if member.status in ['creator', 'administrator']:
+                keyboard.append([(grops_name)])
         reply_markup = ReplyKeyboardMarkup(keyboard)
         await update.message.reply_text("текст получен выберите где будет призыв", reply_markup=reply_markup)
         context.user_data["atack"] = 2
@@ -369,6 +425,7 @@ def main() -> None:
     application.add_handler(CommandHandler("add_post",add_post))
     application.add_handler(CommandHandler("top_post",top_post))
     application.add_handler(CommandHandler("help",help))
+    application.add_handler(CommandHandler("check",check))
     #оброботка текста
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
     #кнопки
