@@ -18,9 +18,10 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 #Настройка гугл таблиц
-gc = gspread.service_account()
+gc = gspread.oauth()
 sh = gc.open("Батальоны и взводы")
 post_ch = gc.open("42_pasta")
+report_ch = gc.open("Отчёты")
 worksheet_post = post_ch.worksheet("42")
 worksheet_42 = post_ch.worksheet("42")
 worksheet_stats = post_ch.worksheet("Лист2")
@@ -150,7 +151,6 @@ async def check(update: Update,context):
     target_user = None
     platoon = []
 
-    # 1. Пользователь ответил на чьё-то сообщение
     if message.reply_to_message:
         target_user = message.reply_to_message.from_user
         for grops_name in data["grops"]:
@@ -161,11 +161,156 @@ async def check(update: Update,context):
             await message.reply_text("Пользователь нигде не найден, скорее всего он не запускал бота")
         else:
             await message.reply_text(f"Пользователь найден в {platoon}")
+
+async def  report_start(update: Update,context):
+    user_id = update.effective_user.id
+    for grops_name in data["grops"]:
+            group_id = data["grops"][grops_name]
+            try:
+                member = await context.bot.get_chat_member(
+                    chat_id=group_id,
+                    user_id=int(user_id)
+                )
+            except BadRequest as exc:
+                logger.warning(
+                    "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                    user_id, grops_name, group_id, exc
+                )
+                continue
+            except TelegramError:
+                logger.exception(
+                    "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                    user_id, grops_name
+                )
+                continue
+            if member.status in ['creator', 'administrator']:
+                await update.message.reply_text("Прова найдены напишите название отчета")
+                context.user_data["report_start"] = 1
+                return
+    await update.message.reply_text("лох")
+
+async def report(update: Update,context):
+    report = context.bot_data.get("report")
+    if report == None:
+        return
+    user_id = update.effective_user.id
+    keyboard = []
+    for grops_name in data["grops"]:
+                group_id = data["grops"][grops_name]
+                worksheet = sh.worksheet(str(grops_name))
     
+                # В некоторых группах Telegram может вернуть BadRequest
+                # (например, "Member not found"), если пользователь не найден
+                # или бот не может проверить его членство. Пропускаем такой чат,
+                # чтобы /start продолжал работать с остальными взводами.
+                try:
+                    member = await context.bot.get_chat_member(
+                        chat_id=group_id,
+                        user_id=int(user_id)
+                    )
+                except BadRequest as exc:
+                    logger.warning(
+                        "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                        user_id, grops_name, group_id, exc
+                    )
+                    continue
+                except TelegramError:
+                    logger.exception(
+                        "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                        user_id, grops_name
+                    )
+                    continue
+    
+                if member.status in ['creator', 'administrator', 'member']:
+                    if worksheet.find(str(user_id)) is None:
+                        worksheet.append_row((str(user_id), update.effective_user.first_name))
+                    keyboard.append([(grops_name)])
+    reply_markup = ReplyKeyboardMarkup(keyboard)
+    context.user_data["report"] = 1
+    await update.message.reply_text("Сбор отчётов видется выберите взвод",reply_markup=reply_markup)
+
 #Обработка текста
 async def message(update: Update,context):
+    user_text = update.message.text
     user_id = update.effective_user.id
     state = context.user_data.get("atack")
+    report = context.user_data.get("report_start")
+    User_report = context.user_data.get("report")
+    if User_report != None:
+         if User_report == 1:
+              try:
+                   report = context.bot_data.get("report")
+                   id  = next(iter(data.values()), [None])
+                   context.user_data["report"] = 2
+                   context.user_data["report_table"] = id
+                   await update.message.reply_text("Отправте фото и число(ТОЛЬКО ЧИСЛО)")
+              except KeyError:
+                    await update.message.reply_text("ЭТОТ ВЗВОД НЕ СОБИРАЕТ ОТЧЁТЫ")
+         if User_report == 2:
+            id = context.user_data["report_table"]
+            worksheet = report_ch.worksheet(id)
+            worksheet.append_rows([str(user_id),str(user_text),str(update.message.id)])
+            await update.message.reply_text("Ваш отчет зафиксирован")
+
+              
+    if report != None:
+        if report == 2:
+            tema = context.user_data["text"]
+            del  context.user_data["text"]
+            await update.message.reply_text("Начинаю подготовку ко сбору отчетов")
+            del context.user_data["report_start"]
+            worksheet_id = uuid.uuid4().hex[:12]
+            worksheet =report_ch.add_worksheet(worksheet_id,500,20)
+            worksheet_idfilter = uuid.uuid4().hex[:12]
+            worksheet =report_ch.add_worksheet(worksheet_idfilter,500,20)
+            context.bot_data["report"] = {user_text:[worksheet_id]}
+            worksheet = sh.worksheet(str(user_text))
+            id_messag = worksheet.cell(1,1).value
+            i = 1
+            while id_messag != None:
+                    try:
+                        await context.bot.send_message(
+                    chat_id=id_messag,
+                    text = "Начался сбор отчётов команда /report доступна в течении 12 часов"
+                    f"\nТЕМА ОТЧЁТОВ:{tema}"
+                )
+                        i = i+1
+                    except:
+                        i = i+1
+                    id_messag =worksheet.cell(i,1).value
+            context.job_queue.run_once(finalizing_reports, 120, data=[worksheet_id], chat_id=user_id)
+            await update.message.reply_text("Подготовка завершина, сбор начат")
+              
+        elif report ==1:
+            context.user_data["text"] = user_text
+            keyboard = []
+            i = 0
+            for grops_name in data["grops"]:
+                group_id = data["grops"][grops_name]
+                try:
+                    member = await context.bot.get_chat_member(
+                                chat_id=group_id,
+                                user_id=int(user_id)
+                            )
+                except BadRequest as exc:
+                            logger.warning(
+                                "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                                user_id, grops_name, group_id, exc
+                            )
+                            continue
+                except TelegramError:
+                            logger.exception(
+                                "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                                user_id, grops_name
+                            )
+                            continue
+                if member.status in ['creator', 'administrator']:
+                    keyboard.append([(grops_name)])
+                    reply_markup = ReplyKeyboardMarkup(keyboard)
+                    await update.message.reply_text("Выберите где будут собератся отчеты", reply_markup=reply_markup)
+                    context.user_data["report_start"] = 2
+                    return
+
     if state is None:
         state = context.user_data.get("post_add")
         if state is None:
@@ -408,6 +553,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # Очистака памяти каждые 24 часа
 async def clear_data_bot(context):
     context.bot_data.clear()
+# завершение таблицы и перессылка сообщений
+async def finalizing_reports(context):
+    table = context.job.data
+    await context.bot.send_message(chat_id=context.job.chat_id, text=f'Сбор окончен')
+    await context.bot.send_message(chat_id=context.job.chat_id, text = f"{table[0]}")
+
 
 
 #кнопкпи
@@ -426,6 +577,8 @@ def main() -> None:
     application.add_handler(CommandHandler("top_post",top_post))
     application.add_handler(CommandHandler("help",help))
     application.add_handler(CommandHandler("check",check))
+    application.add_handler(CommandHandler("report_start",report_start))
+    application.add_handler(CommandHandler("report",report))
     #оброботка текста
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
     #кнопки
