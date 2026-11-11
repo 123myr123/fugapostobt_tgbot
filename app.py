@@ -237,21 +237,41 @@ async def message(update: Update,context):
     report = context.user_data.get("report_start")
     User_report = context.user_data.get("report")
     if User_report != None:
-         if User_report == 1:
-              try:
-                   report = context.bot_data.get("report")
-                   id  = next(iter(data.values()), [None])
-                   context.user_data["report"] = 2
-                   context.user_data["report_table"] = id
-                   await update.message.reply_text("Отправте фото и число(ТОЛЬКО ЧИСЛО)")
-              except KeyError:
-                    await update.message.reply_text("ЭТОТ ВЗВОД НЕ СОБИРАЕТ ОТЧЁТЫ")
-         if User_report == 2:
+        if User_report == 1:
+            try:
+                reports = context.bot_data.get("report", {})
+                del context.user_data["report"]
+
+            # user_text — название выбранного взвода
+                worksheet_ids = reports.get(user_text)
+
+                if not worksheet_ids:
+                    await update.message.reply_text(
+                    "ЭТОТ ВЗВОД НЕ СОБИРАЕТ ОТЧЁТЫ"
+                    )
+                    return
+
+                worksheet_id = worksheet_ids[0]
+                
+                context.user_data["report"] = 2
+                context.user_data["report_table"] = worksheet_id
+
+                await update.message.reply_text(
+                    "Отправьте фото и число (ТОЛЬКО ЧИСЛО)"
+                )
+
+            except (KeyError, TypeError, IndexError):
+                await update.message.reply_text(
+                "ЭТОТ ВЗВОД НЕ СОБИРАЕТ ОТЧЁТЫ"
+                )
+            return
+        if User_report == 2:
             id = context.user_data["report_table"]
             worksheet = report_ch.worksheet(id)
-            worksheet.append_rows([str(user_id),str(user_text),str(update.message.id)])
+            worksheet.append_row([str(user_id),str(user_text),str(update.message.id)])
             await update.message.reply_text("Ваш отчет зафиксирован")
-
+            del context.user_data["report"]
+            return
               
     if report != None:
         if report == 2:
