@@ -298,7 +298,7 @@ async def message(update: Update,context):
                     except:
                         i = i+1
                     id_messag =worksheet.cell(i,1).value
-            context.job_queue.run_once(finalizing_reports, 120, data=[worksheet_id], chat_id=user_id)
+            context.job_queue.run_once(finalizing_reports, 120, data=[worksheet_id,worksheet_idfilter], chat_id=user_id)
             await update.message.reply_text("Подготовка завершина, сбор начат")
               
         elif report ==1:
@@ -576,7 +576,24 @@ async def clear_data_bot(context):
 # завершение таблицы и перессылка сообщений
 async def finalizing_reports(context):
     table = context.job.data
+    worksheet = report_ch.worksheet(table[1])
+    worksheet.update_cell(1,1,f"=SORT(FILTER('{table[0]}'!A:C;IFERROR(ISNUMBER(VALUE('{table[0]}'!B:B));FALSE));2;FALSE)")
     await context.bot.send_message(chat_id=context.job.chat_id, text=f'Сбор окончен')
+    id_messag = worksheet.cell(1,3).value
+    id_chat = worksheet.cell(1,1).value
+    i=1
+    while id_chat != None:
+        try:
+            await context.bot.forward_message(
+            chat_id=-context.job.chat_id,  # Куда пересылаем
+            from_chat_id=int(id_chat),  # Откуда
+            message_id=int(id_messag),  # Какое сообщение
+            )
+        except:
+             logger.warning("не удалось проверить членство в группе")
+    i=+1
+    id_messag = worksheet.cell(i,3).value
+    id_chat = worksheet.cell(i,1).value
     await context.bot.send_message(chat_id=context.job.chat_id, text = f"{table[0]}")
 
 
