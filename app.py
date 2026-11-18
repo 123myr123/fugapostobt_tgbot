@@ -229,6 +229,42 @@ async def report(update: Update,context):
     context.user_data["report"] = 1
     await update.message.reply_text("Сбор отчётов видется выберите взвод",reply_markup=reply_markup)
 
+async def my_stat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    platoon = "Ты состоишь в: "
+    for grops_name in data["grops"]:
+                group_id = data["grops"][grops_name]
+                worksheet = sh.worksheet(str(grops_name))
+    
+                # В некоторых группах Telegram может вернуть BadRequest
+                # (например, "Member not found"), если пользователь не найден
+                # или бот не может проверить его членство. Пропускаем такой чат,
+                # чтобы /start продолжал работать с остальными взводами.
+                try:
+                    member = await context.bot.get_chat_member(
+                        chat_id=group_id,
+                        user_id=int(user_id)
+                    )
+                except BadRequest as exc:
+                    logger.warning(
+                        "Не удалось проверить членство user_id=%s в группе %s (%s): %s",
+                        user_id, grops_name, group_id, exc
+                    )
+                    continue
+                except TelegramError:
+                    logger.exception(
+                        "Ошибка Telegram при проверке членства user_id=%s в группе %s",
+                        user_id, grops_name
+                    )
+                    continue
+    
+                if member.status in ['creator', 'administrator', 'member']:
+                    row = worksheet.find(str(user_id))
+                    if row != None:
+                        valie =worksheet.cell(row.row,4).value
+                    platoon= platoon + f"\n{grops_name}, количество очков у тебя в этом взводе:{valie}"
+    await update.message.reply_text(platoon)
+
 #Обработка текста
 async def message(update: Update,context):
     if update.message.text:
@@ -420,8 +456,9 @@ async def message(update: Update,context):
         await update.message.reply_text("Вы выбрали взвод, напишите текст который будет высвечиватся после")
         context.user_data["atack"] = 3
     state = context.user_data.get("post_add")
-    
 
+
+    
 #Кнопки
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -667,6 +704,7 @@ def main() -> None:
     application.add_handler(CommandHandler("check",check))
     application.add_handler(CommandHandler("report_start",report_start))
     application.add_handler(CommandHandler("report",report))
+    application.add_handler(CommandHandler("my_stat",my_stat))
     #оброботка текста
     application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, message))
     #кнопки
