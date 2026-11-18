@@ -231,7 +231,12 @@ async def report(update: Update,context):
 
 #Обработка текста
 async def message(update: Update,context):
-    user_text = update.message.text
+    if update.message.text:
+        user_text = update.message.text
+    elif update.message.caption:
+        user_text = update.message.caption
+    else:
+        user_text = None
     user_id = update.effective_user.id
     state = context.user_data.get("atack")
     report = context.user_data.get("report_start")
@@ -257,7 +262,7 @@ async def message(update: Update,context):
                 context.user_data["report_table"] = worksheet_id
 
                 await update.message.reply_text(
-                    "Отправьте фото и число (ТОЛЬКО ЧИСЛО)"
+                    "Отправьте фото и число (ТОЛЬКО ЧИСЛО). УЧТИТЕ ЧТО ПРИНЕМАЕТСЯ ТОЛЬКО ОДНО ФОТО, ЕСЛИ У ВАС ИХ НЕСКОЛЬКО ТО ОБЪЕДИНИТЕ ИХ ЧЕРЕЗ ЛЮБОЙ УДОБНЫЙ ВАМ РЕДАКТОР ФОТО И ОТПРАВТЕ СЮДА"
                 )
 
             except (KeyError, TypeError, IndexError):
@@ -421,8 +426,23 @@ async def message(update: Update,context):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     variant = query.data
-    await query.answer()
-
+    if not variant.startswith("#") == None:
+        b, id = str(variant)[1:].split("_", 1)
+        b = b.replace("#", "")
+        for grops_name in data["grops"]:
+            worksheet = sh.worksheet(str(grops_name))
+            serch = worksheet.find(id)
+            if serch != None:
+                i = worksheet.cell(serch.row,4).value
+                if i == None:
+                     worksheet.update_cell(serch.row,4,int(b))
+                else:
+                    worksheet.update_cell(serch.row,4,str(int(i) + int(b)))
+                await query.answer(
+                    "Оценка зафиксирована",
+                    show_alert=True      
+                )
+        return        
     # Кнопки подробностей новых призывов используют уникальный ID.
     if variant.startswith("detail:"):
         details_id = variant.split(":", 1)[1]
@@ -570,31 +590,62 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "Подробности этого старого призыва недоступны. "
             )
         return
-# Очистака памяти каждые 24 часа
+# Очистака памяти каждые 24 часа + проверка ролей
 async def clear_data_bot(context):
     context.bot_data.clear()
 # завершение таблицы и перессылка сообщений
 async def finalizing_reports(context):
     table = context.job.data
+    user_id = context.job.chat_id
     worksheet = report_ch.worksheet(table[1])
     worksheet.update_cell(1,1,f"=SORT(FILTER('{table[0]}'!A:C;IFERROR(ISNUMBER(VALUE('{table[0]}'!B:B));FALSE));2;FALSE)")
-    await context.bot.send_message(chat_id=context.job.chat_id, text=f'Сбор окончен')
+    await context.bot.send_message(chat_id=user_id, text=f'Сбор окончен')
+    context.bot_data["report"].clear()
     id_messag = worksheet.cell(1,3).value
     id_chat = worksheet.cell(1,1).value
     i=1
     while id_chat != None:
         try:
             await context.bot.forward_message(
-            chat_id=-context.job.chat_id,  # Куда пересылаем
-            from_chat_id=int(id_chat),  # Откуда
-            message_id=int(id_messag),  # Какое сообщение
+            chat_id=user_id,
+            from_chat_id=int(id_chat),
+            message_id=int(id_messag),
             )
+            keyboard = [
+            [
+            InlineKeyboardButton("1🌟", callback_data=f'#1_{id_chat}'),
+            InlineKeyboardButton("2🌟", callback_data=f'#2_{id_chat}'),
+            InlineKeyboardButton("3🌟", callback_data=f'#3_{id_chat}'),
+            InlineKeyboardButton("4🌟", callback_data=f'#4_{id_chat}'),
+            InlineKeyboardButton("5🌟", callback_data=f'#5_{id_chat}'),
+            ],
+            [
+            InlineKeyboardButton("6🌟", callback_data=f'#6_{id_chat}'),
+            InlineKeyboardButton("7🌟", callback_data=f'#7_{id_chat}'),
+            InlineKeyboardButton("8🌟", callback_data=f'#8_{id_chat}'),
+            InlineKeyboardButton("9🌟", callback_data=f'#9_{id_chat}'),
+            InlineKeyboardButton("10🌟", callback_data=f'#10_{id_chat}'),
+            ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await context.bot.send_message(chat_id=context.job.chat_id, text = f"Выберите награду",reply_markup=reply_markup)
         except:
-             logger.warning("не удалось проверить членство в группе")
-    i=+1
-    id_messag = worksheet.cell(i,3).value
-    id_chat = worksheet.cell(i,1).value
-    await context.bot.send_message(chat_id=context.job.chat_id, text = f"{table[0]}")
+             logger.warning("не переслать сообщение")
+        i = i +1
+        id_messag = worksheet.cell(i,3).value
+        id_chat = worksheet.cell(i,1).value
+    i = 1
+    text = f"<b>Самые активные участники по итогам сбора отчетов:</b> "
+    while i<4:
+        id_chat = worksheet.cell(i,1).value
+        score = worksheet.cell(i,2).value
+        if score == None:
+             break
+        user = await context.bot.get_chat(id_chat)
+        name = user.first_name
+        text =text + f'\n<a href="tg://user?id={id_chat}">{name}</a>: {score}'
+        i = i+1
+    await context.bot.send_message(chat_id=context.job.chat_id, text = text, parse_mode="HTML")
 
 
 
@@ -617,7 +668,7 @@ def main() -> None:
     application.add_handler(CommandHandler("report_start",report_start))
     application.add_handler(CommandHandler("report",report))
     #оброботка текста
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message))
+    application.add_handler(MessageHandler((filters.TEXT | filters.PHOTO | filters.VIDEO) & ~filters.COMMAND, message))
     #кнопки
     application.add_handler(CallbackQueryHandler(button))
     print("Бот запущен. Нажмите Ctrl+C для остановки.")
