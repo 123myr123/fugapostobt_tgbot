@@ -18,7 +18,7 @@ formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(messag
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 #Настройка гугл таблиц
-gc = gspread.oauth()
+gc = gspread.service_account()
 sh = gc.open("Батальоны и взводы")
 post_ch = gc.open("42_pasta")
 report_ch = gc.open("Отчёты")
@@ -339,7 +339,7 @@ async def message(update: Update,context):
                     except:
                         i = i+1
                     id_messag =worksheet.cell(i,1).value
-            context.job_queue.run_once(finalizing_reports, 120, data=[worksheet_id,worksheet_idfilter], chat_id=user_id)
+            context.job_queue.run_once(finalizing_reports, 43200, data=[worksheet_id,worksheet_idfilter], chat_id=user_id)
             await update.message.reply_text("Подготовка завершина, сбор начат")
               
         elif report ==1:
@@ -463,7 +463,7 @@ async def message(update: Update,context):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     variant = query.data
-    if not variant.startswith("#") == None:
+    if  variant.startswith("#"):
         b, id = str(variant)[1:].split("_", 1)
         b = b.replace("#", "")
         for grops_name in data["grops"]:
@@ -683,7 +683,7 @@ async def finalizing_reports(context):
         text =text + f'\n<a href="tg://user?id={id_chat}">{name}</a>: {score}'
         i = i+1
     await context.bot.send_message(chat_id=context.job.chat_id, text = text, parse_mode="HTML")
-
+# авто выдоча ролей только трейтий взвод пока
 
 
 #кнопкпи
