@@ -74,6 +74,7 @@ async def help(update,context):
         "\nКаналл с новостями по боту: https://t.me/fugapostnews"
         )
 async def my_id(update: Update,context):
+    """Айди чата и пользователя"""
     user_id = update.effective_user.id
     user_name = update.effective_user.first_name
     group = update.effective_chat.id
@@ -87,6 +88,7 @@ async def add_post(update: Update,context):
     context.user_data["post_add"] = True
     await update.message.reply_text("Для сохранения пасты скиньте её текст следующим сообщением.",reply_markup=reply_markup)
 async def atack_time(update: Update,context):
+    """Запуск атаки"""
     user_id = update.effective_user.id
     for grops_name in data["grops"]:
             group_id = data["grops"][grops_name]
@@ -113,6 +115,7 @@ async def atack_time(update: Update,context):
                 return
     await update.message.reply_text("лох")
 async def post(update:Update, context):
+    """Список паст"""
     keyboard = [
                 [
                 InlineKeyboardButton("Следущюя", callback_data='+'),
@@ -130,6 +133,7 @@ async def post(update:Update, context):
     context.user_data["post"] = 1
     await update.message.reply_text(f"{post}",reply_markup=reply_markup)
 async def top_post(update: Update,context):
+    """Список лучших паст"""
     values_list = worksheet_top.col_values(2)
     values_list.sort(reverse=True)
     top_past =  worksheet_top.find(values_list[0])
@@ -143,6 +147,7 @@ async def top_post(update: Update,context):
     await update.message.reply_text(f"{worksheet_top.cell(top_past.row,1).value}",reply_markup=reply_markup)
 
 async def check(update: Update,context):
+    """Проверка пользователя """
     message = update.effective_message
 
     if not message:
@@ -163,6 +168,7 @@ async def check(update: Update,context):
             await message.reply_text(f"Пользователь найден в {platoon}")
 
 async def  report_start(update: Update,context):
+    """Запуск сбора отчётов"""
     user_id = update.effective_user.id
     for grops_name in data["grops"]:
             group_id = data["grops"][grops_name]
@@ -307,9 +313,18 @@ async def message(update: Update,context):
                 )
             return
         if User_report == 2:
+            message_id = update.message.id
+            context.user_data["message_id"] = message_id
+            context.user_data["user_int"] = user_text
+            context.user_data["report"] = 3
+            await update.message.reply_text("Добавте коментарий от себя к своему отчёту")
+
+        if User_report == 3:
             id = context.user_data["report_table"]
+            user_int = context.user_data["user_int"]
+            message_id = context.user_data["message_id"]
             worksheet = report_ch.worksheet(id)
-            worksheet.append_row([str(user_id),str(user_text),str(update.message.id)])
+            worksheet.append_row([str(user_id),str(user_int),str(message_id),str(user_text)])
             await update.message.reply_text("Ваш отчет зафиксирован")
             del context.user_data["report"]
             return
@@ -629,17 +644,18 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 # Очистака памяти каждые 24 часа + проверка ролей
 async def clear_data_bot(context):
-    context.bot_data.clear()
+    context.bot_data["second_texts"].clear()
 # завершение таблицы и перессылка сообщений
 async def finalizing_reports(context):
     table = context.job.data
     user_id = context.job.chat_id
     worksheet = report_ch.worksheet(table[1])
-    worksheet.update_cell(1,1,f"=SORT(FILTER('{table[0]}'!A:C;IFERROR(ISNUMBER(VALUE('{table[0]}'!B:B));FALSE));2;FALSE)")
+    worksheet.update_cell(1,1,f"=SORT(FILTER('{table[0]}'!A:D;IFERROR(ISNUMBER(VALUE('{table[0]}'!B:B));FALSE));2;FALSE)")
     await context.bot.send_message(chat_id=user_id, text=f'Сбор окончен')
     context.bot_data["report"].clear()
     id_messag = worksheet.cell(1,3).value
     id_chat = worksheet.cell(1,1).value
+    id_text = worksheet.cell(1,4).value
     i=1
     while id_chat != None:
         try:
@@ -665,12 +681,13 @@ async def finalizing_reports(context):
             ]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            await context.bot.send_message(chat_id=context.job.chat_id, text = f"Выберите награду",reply_markup=reply_markup)
+            await context.bot.send_message(chat_id=context.job.chat_id, text = f"Коментарий пользователя:{id_text}\nВыберите награду",reply_markup=reply_markup)
         except:
              logger.warning("не переслать сообщение")
         i = i +1
         id_messag = worksheet.cell(i,3).value
         id_chat = worksheet.cell(i,1).value
+        id_text = worksheet.cell(i,4).value
     i = 1
     text = f"<b>Самые активные участники по итогам сбора отчетов:</b> "
     while i<4:
